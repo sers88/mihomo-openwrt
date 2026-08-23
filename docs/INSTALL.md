@@ -14,10 +14,23 @@ curl -sL https://raw.githubusercontent.com/sers88/mihomo-openwrt/main/install.sh
 
 | Option | Effect |
 |---|---|
+| `--feed` | install via the signed APK repository (see next section) instead of direct downloads |
 | `--dnsmasq` | also forward the router's DNS through mihomo (step 5 below) |
 | `--no-service` | install/update packages only, no config, no service changes |
 
 The script is idempotent: re-running it updates to the latest release. Existing configs are never modified. If you prefer not to pipe scripts from the internet, [read it first](https://github.com/sers88/mihomo-openwrt/blob/main/install.sh) and follow the manual steps below instead.
+
+## APK repository (signed feed)
+
+Instead of downloading APKs by hand you can register the project feed once and use `apk` natively — packages are verified against a committed signing key (no `--allow-untrusted`) and updated with a regular `apk upgrade`:
+
+```sh
+wget -O /etc/apk/keys/mihomo-openwrt.pem https://sers88.github.io/mihomo-openwrt/keys/mihomo-openwrt.pem
+echo "https://sers88.github.io/mihomo-openwrt/packages/$(. /etc/openwrt_release && echo $DISTRIB_ARCH)/packages.adb" > /etc/apk/repositories.d/mihomo-openwrt.list
+apk update && apk add mihomo mihomo-metacubexd
+```
+
+`sh install.sh --feed` does the same and continues with config/service setup. Later updates: `apk update && apk upgrade mihomo mihomo-metacubexd`. Skip to step 3 (config) after installing this way.
 
 ## 0. Determine your architecture
 
@@ -174,6 +187,12 @@ New release comes out (the project auto-rebuilds every 6 hours) — download the
 
 ```sh
 apk add mihomo-<new-version>-r1_<arch>.apk --allow-untrusted
+```
+
+If you installed via the APK repository (or `install.sh --feed`), updating is just:
+
+```sh
+apk update && apk upgrade mihomo mihomo-metacubexd
 ```
 
 Your configs survive upgrades: `/etc/mihomo/config.yaml` and `/etc/config/mihomo` are registered as conffiles. The service restarts automatically only on interface triggers — restart it manually after an upgrade:

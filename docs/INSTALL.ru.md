@@ -14,10 +14,23 @@ curl -sL https://raw.githubusercontent.com/sers88/mihomo-openwrt/main/install.sh
 
 | Опция | Действие |
 |---|---|
+| `--feed` | ставить из подписанного APK-репозитория (следующая секция) вместо прямого скачивания |
 | `--dnsmasq` | дополнительно направить DNS роутера через mihomo (шаг 5 ниже) |
 | `--no-service` | только установить/обновить пакеты, без конфига и сервиса |
 
 Скрипт идемпотентный: повторный запуск = обновление до последнего релиза. Существующие конфиги не изменяются. Не хотите исполнять скрипт из интернета — [прочитайте его](https://github.com/sers88/mihomo-openwrt/blob/main/install.sh) и пройдите ручные шаги ниже.
+
+## APK-репозиторий (подписанный фид)
+
+Вместо ручного скачивания APK можно один раз подключить фид проекта и пользоваться `apk` как обычно: пакеты проверяются по ключу подписи, закоммиченному в репозитории (без `--allow-untrusted`), а обновления ставятся обычным `apk upgrade`:
+
+```sh
+wget -O /etc/apk/keys/mihomo-openwrt.pem https://sers88.github.io/mihomo-openwrt/keys/mihomo-openwrt.pem
+echo "https://sers88.github.io/mihomo-openwrt/packages/$(. /etc/openwrt_release && echo $DISTRIB_ARCH)/packages.adb" > /etc/apk/repositories.d/mihomo-openwrt.list
+apk update && apk add mihomo mihomo-metacubexd
+```
+
+`sh install.sh --feed` делает то же самое и продолжает настройку конфига/сервиса. Дальнейшие обновления: `apk update && apk upgrade mihomo mihomo-metacubexd`. После такой установки переходите сразу к шагу 3 (конфиг).
 
 ## 0. Определите архитектуру
 
@@ -174,6 +187,12 @@ curl -s http://127.0.0.1:9090/traffic -H "Authorization: Bearer change-me" | hea
 
 ```sh
 apk add mihomo-<новая-версия>-r1_<arch>.apk --allow-untrusted
+```
+
+Если вы ставили из APK-репозитория (или `install.sh --feed`), обновление — это просто:
+
+```sh
+apk update && apk upgrade mihomo mihomo-metacubexd
 ```
 
 Конфиги переживают обновление: `/etc/mihomo/config.yaml` и `/etc/config/mihomo` зарегистрированы как conffiles. После обновления сервис сам не перезапустится (только по интерфейсным триггерам) — перезапустите вручную:

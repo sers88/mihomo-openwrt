@@ -10,6 +10,8 @@ on:
 permissions:
   actions: write
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -158,6 +160,136 @@ jobs:
           overwrite: true
           body: |
             ${{ steps.read_release.outputs.RELEASE_BODY }}
+
+  feed:
+    name: Publish APK feed to Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Resolve latest mihomo version
+        run: |
+          TAG=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | jq -r '.tag_name' | tr -d 'v')
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "Failed to resolve latest mihomo release" >&2
+            exit 1
+          fi
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+        continue-on-error: true
+
+      - name: Assemble feed site
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          mkdir -p site/keys site/packages/aarch64_generic site/packages/x86_64
+          cp keys/mihomo-openwrt.pem site/keys/
+
+          for arch in aarch64_generic x86_64; do
+            found=0
+            for f in $(find artifacts -type f -name "*_${arch}.apk" 2>/dev/null); do
+              found=1
+              base=$(basename "$f" "_${arch}.apk")
+              cp "$f" "site/packages/$arch/${base}.apk"
+            done
+            if [ "$found" -eq 0 ]; then
+              echo "No build artifact for $arch, falling back to release v${TAG}"
+              mkdir -p "tmp-rel-${arch}"
+              gh release download "v${TAG}" --pattern "*_${arch}.apk" --dir "tmp-rel-${arch}"
+              for f in "tmp-rel-${arch}"/*.apk; do
+                base=$(basename "$f" "_${arch}.apk")
+                cp "$f" "site/packages/$arch/${base}.apk"
+              done
+            fi
+            ls -la "site/packages/$arch"
+          done
+
+      - name: Install apk-tools
+        run: |
+          curl -fsSL -o apk.static https://gitlab.alpinelinux.org/api/v4/projects/5/packages/generic/v3.0.7/x86_64/apk.static
+          echo "c07bf5356eacc9dd7a8c56bc537f46702f007170287403299d52a04264e74b3c  apk.static" | sha256sum -c -
+          chmod +x apk.static
+
+      - name: Verify signing key against committed public key
+        env:
+          APK_SIGNING_KEY: ${{ secrets.APK_SIGNING_KEY }}
+        run: |
+          set -eu
+          printf '%s\n' "$APK_SIGNING_KEY" > private-key.pem
+          openssl ec -in private-key.pem -pubout -out derived-key.pem
+          diff -u keys/mihomo-openwrt.pem derived-key.pem
+
+      - name: Generate and sign repository indexes
+        run: |
+          set -eu
+          for arch in aarch64_generic x86_64; do
+            (cd "site/packages/$arch" &&
+              "$GITHUB_WORKSPACE/apk.static" mkndx \
+                --allow-untrusted \
+                --sign "$GITHUB_WORKSPACE/private-key.pem" \
+                --output packages.adb *.apk)
+          done
+          rm -f private-key.pem
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  feed-test:
+    name: Test feed install (x86_64)
+    needs: feed
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Verify feed files are served
+        run: |
+          set -eu
+          BASE=https://sers88.github.io/mihomo-openwrt
+          code=
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/packages/x86_64/packages.adb" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          if [ "$code" != "200" ]; then
+            echo "packages.adb not reachable (last code: $code)" >&2
+            exit 1
+          fi
+          curl -fsSL -o /dev/null "$BASE/packages/aarch64_generic/packages.adb"
+          curl -fsSL -o /dev/null "$BASE/keys/mihomo-openwrt.pem"
+
+      - name: Install from feed in OpenWrt container
+        run: |
+          docker run --rm -v "$PWD/keys:/hostkeys:ro" openwrt/rootfs:x86_64-25.12.2 sh -exc '
+            cp /hostkeys/mihomo-openwrt.pem /etc/apk/keys/
+            echo "https://sers88.github.io/mihomo-openwrt/packages/x86_64/packages.adb" >> /etc/apk/repositories.d/customfeeds.list
+            apk update
+            apk add mihomo mihomo-metacubexd
+            mihomo -v | head -n 2
+            test -f /usr/share/mihomo/ui/index.html
+            echo FEED-TEST-OK
+          '
 
   cleanup:
     name: Keep only 2 latest releases

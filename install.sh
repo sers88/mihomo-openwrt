@@ -1,14 +1,15 @@
 #!/bin/sh
 # mihomo-openwrt installer / updater.
 #
-# Installs (or updates to) the latest mihomo + mihomo-metacubexd APKs from
-# https://github.com/sers88/mihomo-openwrt/releases, creates a starter
-# /etc/mihomo/config.yaml with a random secret if none exists, and enables
-# and (re)starts the service. Re-running the script updates to the latest
-# release; existing configs are never touched (they are apk conffiles).
+# Installs (or updates to) the latest mihomo + mihomo-metacubexd APKs,
+# creates a starter /etc/mihomo/config.yaml with a random secret if none
+# exists, and enables and (re)starts the service. Re-running the script
+# updates to the latest release; existing configs are never touched (they
+# are apk conffiles).
 #
 # Usage:
 #   sh install.sh              install/update, enable + restart service
+#   sh install.sh --feed       install via the signed APK feed (GitHub Pages)
 #   sh install.sh --dnsmasq    also forward router DNS through mihomo
 #   sh install.sh --no-service install/update packages only
 #
@@ -18,16 +19,19 @@ set -eu
 
 REPO="sers88/mihomo-openwrt"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+FEED_BASE="https://sers88.github.io/mihomo-openwrt"
 CONFIG_FILE="/etc/mihomo/config.yaml"
 
 DNSMASQ=0
 SERVICE=1
+FEED=0
 for arg in "$@"; do
     case "$arg" in
+        --feed) FEED=1 ;;
         --dnsmasq) DNSMASQ=1 ;;
         --no-service) SERVICE=0 ;;
         *)
-            echo "Usage: sh install.sh [--dnsmasq] [--no-service]" >&2
+            echo "Usage: sh install.sh [--feed] [--dnsmasq] [--no-service]" >&2
             echo "Unknown option: $arg" >&2
             exit 1
             ;;
@@ -61,30 +65,47 @@ fetch() { # <url> <dest|'-'>
     fi
 }
 
-# --- 3. Resolve latest release assets --------------------------------------
-msg "resolving latest release"
-json=$(fetch "$API_URL" -) || die "failed to reach the GitHub API (rate limit? no connectivity?)"
-# Only trust real asset download URLs; the release body (README copy) may
-# mention *.apk files too and must not leak into the extraction below.
-urls=$(printf '%s\n' "$json" | grep -o 'https://github\.com/[^"]*/releases/download/[^"]*\.apk' | sort -u)
-# Core asset is mihomo-<version>-r1_<arch>.apk — the leading digit after
-# "mihomo-" distinguishes it from mihomo-metacubexd-<version>-...
-core_url=$(printf '%s\n' "$urls" | grep "/mihomo-[0-9][^/]*_${ARCH}\.apk$" | head -n 1)
-ui_url=$(printf '%s\n' "$urls" | grep "/mihomo-metacubexd-[^/]*_${ARCH}\.apk$" | head -n 1)
-[ -n "$core_url" ] || die "no mihomo APK for ${ARCH} in the latest release"
-[ -n "$ui_url" ]   || die "no mihomo-metacubexd APK for ${ARCH} in the latest release"
+# --- 3+4. Install packages (signed feed or direct release download) --------
+install_from_feed() {
+    msg "installing from signed feed ${FEED_BASE}"
+    mkdir -p /etc/apk/keys
+    fetch "$FEED_BASE/keys/mihomo-openwrt.pem" /etc/apk/keys/mihomo-openwrt.pem
+    echo "$FEED_BASE/packages/$ARCH/packages.adb" > /etc/apk/repositories.d/mihomo-openwrt.list
+    apk update || die "apk update failed (feed unreachable?)"
+    apk add mihomo mihomo-metacubexd || die "apk add from feed failed"
+    msg "future updates: apk update && apk upgrade"
+}
 
-# --- 4. Download and install ------------------------------------------------
-tmp=$(mktemp -d /tmp/mihomo-install.XXXXXX) || die "mktemp failed"
-trap 'rm -rf "$tmp"' EXIT
+install_from_release() {
+    msg "resolving latest release"
+    json=$(fetch "$API_URL" -) || die "failed to reach the GitHub API (rate limit? no connectivity?)"
+    # Only trust real asset download URLs; the release body (README copy) may
+    # mention *.apk files too and must not leak into the extraction below.
+    urls=$(printf '%s\n' "$json" | grep -o 'https://github\.com/[^"]*/releases/download/[^"]*\.apk' | sort -u)
+    # Core asset is mihomo-<version>-r1_<arch>.apk — the leading digit after
+    # "mihomo-" distinguishes it from mihomo-metacubexd-<version>-...
+    core_url=$(printf '%s\n' "$urls" | grep "/mihomo-[0-9][^/]*_${ARCH}\.apk$" | head -n 1)
+    ui_url=$(printf '%s\n' "$urls" | grep "/mihomo-metacubexd-[^/]*_${ARCH}\.apk$" | head -n 1)
+    [ -n "$core_url" ] || die "no mihomo APK for ${ARCH} in the latest release"
+    [ -n "$ui_url" ]   || die "no mihomo-metacubexd APK for ${ARCH} in the latest release"
 
-msg "downloading $(basename "$core_url")"
-fetch "$core_url" "$tmp/mihomo.apk"
-msg "downloading $(basename "$ui_url")"
-fetch "$ui_url" "$tmp/ui.apk"
+    tmp=$(mktemp -d /tmp/mihomo-install.XXXXXX) || die "mktemp failed"
+    trap 'rm -rf "$tmp"' EXIT
 
-apk add --allow-untrusted "$tmp/mihomo.apk" || die "apk add mihomo failed"
-apk add --allow-untrusted "$tmp/ui.apk"    || die "apk add mihomo-metacubexd failed"
+    msg "downloading $(basename "$core_url")"
+    fetch "$core_url" "$tmp/mihomo.apk"
+    msg "downloading $(basename "$ui_url")"
+    fetch "$ui_url" "$tmp/ui.apk"
+
+    apk add --allow-untrusted "$tmp/mihomo.apk" || die "apk add mihomo failed"
+    apk add --allow-untrusted "$tmp/ui.apk"    || die "apk add mihomo-metacubexd failed"
+}
+
+if [ "$FEED" -eq 1 ]; then
+    install_from_feed
+else
+    install_from_release
+fi
 
 [ "$SERVICE" -eq 1 ] || { msg "done (--no-service): packages installed, service untouched"; exit 0; }
 

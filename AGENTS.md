@@ -9,7 +9,7 @@ This repo builds two OpenWrt APK packages from upstream sources:
 * `net/mihomo` — the mihomo (Clash Meta) proxy core, compiled from source with the Go toolchain inside the OpenWrt SDK
 * `net/mihomo-metacubexd` — the metacubexd web dashboard (prebuilt static files), installed to `/usr/share/mihomo/ui`, `PKGARCH:=all`, `DEPENDS:=+mihomo`
 
-`.github/workflows/build.yml` is the single CI pipeline: matrix build for `aarch64_generic` and `x86_64`, triggered by schedule (every 6h), PRs to `main`, and manual dispatch. It resolves the latest upstream releases, substitutes versions/hashes into the Makefiles, builds both APKs, publishes them to a GitHub release, and prunes old releases down to 2.
+`.github/workflows/build.yml` is the single CI pipeline: matrix build for `aarch64_generic` and `x86_64`, triggered by schedule (every 6h), PRs to `main`, and manual dispatch. It resolves the latest upstream releases, substitutes versions/hashes into the Makefiles, builds both APKs, publishes them to a GitHub release, prunes old releases down to 2, and publishes a signed APK feed to GitHub Pages (`feed` job) that is verified end-to-end in an OpenWrt container (`feed-test` job).
 
 `install.sh` at the repo root is the on-device installer/updater: it detects the arch, downloads the latest release, installs both APKs, seeds a starter config if missing, and enables the service. Re-running it updates to the latest release.
 
@@ -30,6 +30,8 @@ This repo builds two OpenWrt APK packages from upstream sources:
 7. **Release layout contract.** Assets are renamed to include the matrix arch suffix: `mihomo-<ver>-r1_<arch>.apk`, `mihomo-metacubexd-<ver>-r1_<arch>.apk`. The skip-check in CI greps for exactly these two patterns per arch. `test.sh` in each package dir asserts the on-target file layout (e.g. `/usr/share/mihomo/ui/index.html`) — update it when changing installed paths.
 
 8. **install.sh mirrors the release layout.** The installer at the repo root resolves the latest release via the GitHub API and matches asset URLs with `/mihomo-[0-9]*-<arch>.apk` (leading digit distinguishes the core from `mihomo-metacubexd-*`) and only accepts URLs containing `/releases/download/` so release-body text cannot leak into the extraction. If asset naming changes, update install.sh together with the CI skip-check. The script runs on-device under BusyBox ash — keep it POSIX sh (no bashisms, no jq), and keep the starter config it embeds in sync with `docs/INSTALL.md`.
+
+9. **APK feed signing.** The `feed` job publishes `packages/<arch>/{*.apk,packages.adb}` plus `keys/mihomo-openwrt.pem` to GitHub Pages and signs each `packages.adb` with the EC (prime256v1) key whose public half is committed at `keys/mihomo-openwrt.pem`; the private half lives only in the `APK_SIGNING_KEY` secret. The job fails closed: it derives the public key from the secret and `diff`s it against the committed file before signing. Feed and deploy never run on `pull_request` events. The repo line format is the **full index URL** (`.../packages/<arch>/packages.adb`) — apk-tools 3 resolves the index strictly from that line, not from a directory plus a conventional file name; do not switch to a bare directory URL. The pinned `apk.static` (apk-tools 3.0.7) and its sha256 must be updated together.
 
 ## Verification
 
