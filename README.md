@@ -33,12 +33,12 @@ Before packaging this project, I explored some usage methods, which can be refer
 
 ## Download
 
-You can download the latest release [here](https://github.com/douglarek/vanilla-mihomo/releases). Don't worry about the release time, it will always be the latest.
+You can download the latest release [here](https://github.com/sers88/mihomo-openwrt/releases). Don't worry about the release time, it will always be the latest.
 
 #### Install
 
 > [!IMPORTANT]
-> Starting from November 2024, OpenWrt will use the apk package manager by default. Sorry, this project will only support building APK packages and will no longer support IPK.
+> Starting from November 2024, OpenWrt will use the apk package manager by default. Sorry, this project will only support building APK packages and no longer support IPK.
 
 ```
 $ apk add mihomo-1.18.10-r1_aarch64_generic.apk --allow-untrusted
@@ -54,3 +54,21 @@ OK: 222 MiB in 241 packages
 ```
 
 The APK package manager will automatically install the corresponding kernel module dependencies.
+
+## Web Dashboard (metacubexd)
+
+[metacubexd](https://github.com/MetaCubeX/metacubexd) is a web UI for managing mihomo. It is shipped as a separate package that installs the dashboard files into `/usr/share/mihomo/ui`:
+
+```
+$ apk add mihomo-metacubexd-1.273.0-r1_aarch64_generic.apk --allow-untrusted
+```
+
+Enable the external controller in `/etc/mihomo/config.yaml`:
+
+```yaml
+external-controller: 0.0.0.0:9090
+secret: "change-me"
+external-ui: ui
+```
+
+Restart mihomo and open `http://<router-ip>:9090/ui` in your browser. Log in with the `secret` from the config above.
