@@ -27,12 +27,26 @@ jobs:
           TAG=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/tags" | jq -r '.[0].name' | tr -d 'v')
           echo "TAG=$TAG" >> $GITHUB_ENV
 
+      - name: Get latest metacubexd version and hash
+        run: |
+          RESP=$(curl -s "https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest")
+          XD_TAG=$(echo "$RESP" | jq -r '.tag_name' | tr -d 'v')
+          XD_HASH=$(echo "$RESP" | jq -r '.assets[] | select(.name == "compressed-dist.tgz") | .digest' | sed 's/^sha256://')
+          if [ -z "$XD_TAG" ] || [ "$XD_TAG" = "null" ] || [ -z "$XD_HASH" ] || [ "$XD_HASH" = "null" ]; then
+            echo "Failed to resolve metacubexd release info" >&2
+            exit 1
+          fi
+          echo "XD_TAG=$XD_TAG" >> $GITHUB_ENV
+          echo "XD_HASH=$XD_HASH" >> $GITHUB_ENV
+
       - name: Check if build already exists for this arch
         id: check_existing
         run: |
-          if gh release view "v${{ env.TAG }}" --json assets --jq '.assets[].name' 2>/dev/null | grep -q "${{ matrix.arch }}"; then
+          ASSETS="$(gh release view "v${{ env.TAG }}" --json assets --jq '.assets[].name' 2>/dev/null || true)"
+          if echo "$ASSETS" | grep -q "^mihomo-[0-9.]*-r[0-9]*_${{ matrix.arch }}.apk$" \
+             && echo "$ASSETS" | grep -q "^mihomo-metacubexd-[0-9.]*-r[0-9]*_${{ matrix.arch }}.apk$"; then
             echo "SKIP_BUILD=true" >> $GITHUB_ENV
-            echo "Skipping build - release v${{ env.TAG }} already contains APK for ${{ matrix.arch }}"
+            echo "Skipping build - release v${{ env.TAG }} already contains both APKs for ${{ matrix.arch }}"
           else
             echo "SKIP_BUILD=false" >> $GITHUB_ENV
           fi
@@ -93,13 +107,16 @@ jobs:
           cp -a ../net package/
           sed -i 's/PKG_VERSION:=stable/PKG_VERSION:=${{ env.TAG }}/g' package/net/mihomo/Makefile
           cat package/net/mihomo/Makefile
+          sed -i "s/PKG_VERSION:=stable/PKG_VERSION:=${{ env.XD_TAG }}/g" package/net/mihomo-metacubexd/Makefile
+          sed -i "s/PKG_HASH:=skip/PKG_HASH:=${{ env.XD_HASH }}/g" package/net/mihomo-metacubexd/Makefile
+          cat package/net/mihomo-metacubexd/Makefile
           make package/net/mihomo/{download,check} FIXUP=1 V=s
-          cat package/net/mihomo/Makefile
+          make package/net/mihomo-metacubexd/{download,check} FIXUP=1 V=s
           make package/net/mihomo/compile V=s
+          make package/net/mihomo-metacubexd/compile V=s
 
           find bin/packages -name '*.apk' -exec sh -c 'mv "$1" "${1%.apk}_${{ matrix.arch }}.apk"' _ {} \;
-          FN=$(find bin/packages -name '*.apk' | sort | head -1 | xargs basename)
-          echo "PKG_NAME=$FN" >> $GITHUB_ENV
+          echo "PKG_NAME=mihomo-openwrt-${{ env.TAG }}-${{ matrix.arch }}" >> $GITHUB_ENV
           cd -
 
       - name: Publishing to GitHub Artifacts
