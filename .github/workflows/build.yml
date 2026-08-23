@@ -52,9 +52,10 @@ jobs:
         run: |
           ASSETS="$(gh release view "v${{ env.TAG }}" --json assets --jq '.assets[].name' 2>/dev/null || true)"
           if echo "$ASSETS" | grep -q "^mihomo-[0-9.]*-r[0-9]*_${{ matrix.arch }}.apk$" \
-             && echo "$ASSETS" | grep -q "^mihomo-metacubexd-[0-9.]*-r[0-9]*_${{ matrix.arch }}.apk$"; then
+             && echo "$ASSETS" | grep -q "^mihomo-metacubexd-[0-9.]*-r[0-9]*_${{ matrix.arch }}.apk$" \
+             && echo "$ASSETS" | grep -q "^luci-app-mihomo-[0-9.]*-r[0-9]*_${{ matrix.arch }}.apk$"; then
             echo "SKIP_BUILD=true" >> $GITHUB_ENV
-            echo "Skipping build - release v${{ env.TAG }} already contains both APKs for ${{ matrix.arch }}"
+            echo "Skipping build - release v${{ env.TAG }} already contains all three APKs for ${{ matrix.arch }}"
           else
             echo "SKIP_BUILD=false" >> $GITHUB_ENV
           fi
@@ -119,10 +120,13 @@ jobs:
           sed -i "s/PKG_VERSION:=stable/PKG_VERSION:=${{ env.XD_TAG }}/g" package/net/mihomo-metacubexd/Makefile
           sed -i "s/PKG_HASH:=skip/PKG_HASH:=${{ env.XD_HASH }}/g" package/net/mihomo-metacubexd/Makefile
           cat package/net/mihomo-metacubexd/Makefile
+          sed -i 's/PKG_VERSION:=stable/PKG_VERSION:=${{ env.TAG }}/g' package/net/luci-app-mihomo/Makefile
+          cat package/net/luci-app-mihomo/Makefile
           make package/net/mihomo/{download,check} FIXUP=1 V=s
           make package/net/mihomo-metacubexd/{download,check} FIXUP=1 V=s
           make package/net/mihomo/compile V=s
           make package/net/mihomo-metacubexd/compile V=s
+          make package/net/luci-app-mihomo/compile V=s
 
           find bin/packages -name '*.apk' -exec sh -c 'mv "$1" "${1%.apk}_${{ matrix.arch }}.apk"' _ {} \;
           echo "PKG_NAME=mihomo-openwrt-${{ env.TAG }}-${{ matrix.arch }}" >> $GITHUB_ENV
@@ -135,7 +139,7 @@ jobs:
           name: ${{ env.PKG_NAME }}
           path: |
             sdk/bin/packages/*/*/mihomo*.apk
-
+            sdk/bin/packages/*/*/luci-app-mihomo*.apk
       - name: Read release.md and use it as a body of new release
         if: env.SKIP_BUILD != 'true'
         id: read_release
@@ -153,7 +157,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: sdk/bin/packages/*/*/mihomo*.apk
+          file: sdk/bin/packages/*/*/*.apk
           tag: v${{ env.TAG }}
           release_name: v${{ env.TAG }}
           file_glob: true
@@ -285,9 +289,12 @@ jobs:
             cp /hostkeys/mihomo-openwrt.pem /etc/apk/keys/
             echo "https://sers88.github.io/mihomo-openwrt/packages/x86_64/packages.adb" >> /etc/apk/repositories.d/customfeeds.list
             apk update
-            apk add mihomo mihomo-metacubexd
+            apk add mihomo mihomo-metacubexd luci-app-mihomo
             mihomo -v | head -n 2
             test -f /usr/share/mihomo/ui/index.html
+            test -f /usr/share/luci/menu.d/luci-app-mihomo.json
+            test -f /usr/share/luci/acl.d/luci-app-mihomo.json
+            test -f /www/luci-static/resources/view/mihomo.js
             echo FEED-TEST-OK
           '
 
