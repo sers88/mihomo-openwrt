@@ -32,6 +32,16 @@ apk update && apk add mihomo mihomo-metacubexd
 
 `sh install.sh --feed` does the same and continues with config/service setup. Later updates: `apk update && apk upgrade mihomo mihomo-metacubexd`. Skip to step 3 (config) after installing this way.
 
+### LuCI app (optional)
+
+If you use LuCI (the OpenWrt web interface), a small companion package adds a *Services → Mihomo* page: service status, start/stop/restart and autostart buttons, a shortcut to the metacubexd dashboard, and a log viewer. It is installed from the same feed:
+
+```sh
+apk add luci-app-mihomo
+```
+
+Proxy/rule configuration itself stays in the metacubexd dashboard or `/etc/mihomo/config.yaml` — the LuCI page intentionally covers only service management. Works with manual installs too (`apk add luci-app-mihomo-<version>-r1_<arch>.apk --allow-untrusted`).
+
 ## 0. Determine your architecture
 
 SSH into the router and run:

@@ -4,12 +4,13 @@ Guidance for AI coding agents working in this repository.
 
 ## Project overview
 
-This repo builds two OpenWrt APK packages from upstream sources:
+This repo builds three OpenWrt APK packages from upstream sources:
 
 * `net/mihomo` — the mihomo (Clash Meta) proxy core, compiled from source with the Go toolchain inside the OpenWrt SDK
 * `net/mihomo-metacubexd` — the metacubexd web dashboard (prebuilt static files), installed to `/usr/share/mihomo/ui`, `PKGARCH:=all`, `DEPENDS:=+mihomo`
+* `net/luci-app-mihomo` — a minimal LuCI app (client-side JS view + menu/acl JSON, no rpcd backend of its own), `PKGARCH:=all`, `DEPENDS:=+luci-base +mihomo`; plain package Makefile, deliberately not using luci.mk since this is not the luci feed
 
-`.github/workflows/build.yml` is the single CI pipeline: matrix build for `aarch64_generic` and `x86_64`, triggered by schedule (every 6h), PRs to `main`, and manual dispatch. It resolves the latest upstream releases, substitutes versions/hashes into the Makefiles, builds both APKs, publishes them to a GitHub release, prunes old releases down to 2, and publishes a signed APK feed to GitHub Pages (`feed` job) that is verified end-to-end in an OpenWrt container (`feed-test` job).
+`.github/workflows/build.yml` is the single CI pipeline: matrix build for `aarch64_generic` and `x86_64`, triggered by schedule (every 6h), PRs to `main`, and manual dispatch. It resolves the latest upstream releases, substitutes versions/hashes into the Makefiles, builds all three APKs, publishes them to a GitHub release, prunes old releases down to 2, and publishes a signed APK feed to GitHub Pages (`feed` job) that is verified end-to-end in an OpenWrt container (`feed-test` job).
 
 `install.sh` at the repo root is the on-device installer/updater: it detects the arch, downloads the latest release, installs both APKs, seeds a starter config if missing, and enables the service. Re-running it updates to the latest release.
 
@@ -27,7 +28,7 @@ This repo builds two OpenWrt APK packages from upstream sources:
 
 6. **Version resolution.** Upstream versions come from `/releases/latest` (GitHub API), not git tags. mihomo's latest *tag* and latest *release* can diverge; keep the releases-based logic and the null-guard.
 
-7. **Release layout contract.** Assets are renamed to include the matrix arch suffix: `mihomo-<ver>-r1_<arch>.apk`, `mihomo-metacubexd-<ver>-r1_<arch>.apk`. The skip-check in CI greps for exactly these two patterns per arch. `test.sh` in each package dir asserts the on-target file layout (e.g. `/usr/share/mihomo/ui/index.html`) — update it when changing installed paths.
+7. **Release layout contract.** Assets are renamed to include the matrix arch suffix: `mihomo-<ver>-r1_<arch>.apk`, `mihomo-metacubexd-<ver>-r1_<arch>.apk`, `luci-app-mihomo-<ver>-r1_<arch>.apk` (the LuCI app is versioned after the mihomo TAG). The skip-check in CI greps for exactly these three patterns per arch; the release upload uses the single glob `sdk/bin/packages/*/*/*.apk` (only our own packages land there), while upload-artifact lists explicit globs — `mihomo*` does NOT match `luci-app-mihomo-*` (it matches by prefix). `test.sh` in each package dir asserts the on-target file layout (e.g. `/usr/share/mihomo/ui/index.html`) — update it when changing installed paths.
 
 8. **install.sh mirrors the release layout.** The installer at the repo root resolves the latest release via the GitHub API and matches asset URLs with `/mihomo-[0-9]*-<arch>.apk` (leading digit distinguishes the core from `mihomo-metacubexd-*`) and only accepts URLs containing `/releases/download/` so release-body text cannot leak into the extraction. If asset naming changes, update install.sh together with the CI skip-check. The script runs on-device under BusyBox ash — keep it POSIX sh (no bashisms, no jq), and keep the starter config it embeds in sync with `docs/INSTALL.md`.
 
