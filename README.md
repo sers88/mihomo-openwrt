@@ -1,22 +1,54 @@
-# Mihomo-OpenWrt
+# Mihomo for OpenWrt
 
-A native build of [Mihomo](https://github.com/MetaCubeX/mihomo) designed specifically for OpenWrt and its derivatives without hearse scripts.
+Native [mihomo](https://github.com/MetaCubeX/mihomo) (formerly Clash Meta) builds packaged as APKs for OpenWrt — no shell-script wrappers, no ipk. Ships with the [metacubexd](https://github.com/MetaCubeX/metacubexd) web dashboard as a separate package. Both are rebuilt automatically whenever upstream publishes a new release.
+
+## Packages
+
+| Package | Description | Size (approx.) |
+|---|---|---|
+| `mihomo` | The proxy core (Go binary, TUN support) | ~17 MB |
+| `mihomo-metacubexd` | Web dashboard, installed to `/usr/share/mihomo/ui`, arch-independent (`all`) | ~2.5 MB |
+
+Builds are published for two architectures:
+
+* `aarch64_generic` (ARM64 routers)
+* `x86_64`
 
 ## Prerequisites
 
-* OpenWrt 25.12.2+
+* OpenWrt **25.12.2 or newer** — packages use the `apk` package manager only (no `ipk` support)
+* Basic familiarity with the OpenWrt terminal
+* Basic knowledge of [mihomo configuration](https://wiki.metacubex.one/en/config/)
 
-## Basic Requirements
+## Download & Install
 
-To effectively use, you should have:
+Grab the latest APKs from the [releases page](https://github.com/sers88/mihomo-openwrt/releases). Release names track the mihomo version (e.g. `v1.19.30`); don't worry about the release date — it always contains the latest upstream versions.
 
-* Basic knowledge of OpenWrt
-* Proficiency in using the OpenWrt terminal
-* Familiarity with basic [Mihomo configuration](https://wiki.metacubex.one/en/config/)
+Upload the APKs to your router and install:
+
+```sh
+apk add mihomo-<version>-r1_<arch>.apk --allow-untrusted
+apk add mihomo-metacubexd-<version>-r1_<arch>.apk --allow-untrusted
+```
+
+> [!TIP]
+> Replace `<version>` and `<arch>` with the actual file names you downloaded (e.g. `mihomo-1.19.30-r1_aarch64_generic.apk`). The `mihomo` package pulls in the required kernel modules (`kmod-tun`, `kmod-inet-diag`, `kmod-netlink-diag`) automatically; the metacubexd package depends on `mihomo` and is arch-independent — either arch file works on any router.
+
+## Web Dashboard (metacubexd)
+
+After installing `mihomo-metacubexd`, enable the external controller in `/etc/mihomo/config.yaml`:
+
+```yaml
+external-controller: 0.0.0.0:9090
+secret: "change-me"
+external-ui: ui
+```
+
+Restart mihomo (`/etc/init.d/mihomo restart`) and open `http://<router-ip>:9090/ui` in your browser. Log in with the `secret` from the config above.
 
 ## Configuration
 
-Utilizes the `auto-redirect` feature introduced in Mihomo:
+The recommended setup uses the `auto-redirect` feature:
 
 ```yaml
 tun:
@@ -29,46 +61,41 @@ tun:
   auto-detect-interface: true
 ```
 
-Before packaging this project, I explored some usage methods, which can be referenced [here](https://gist.github.com/douglarek/99fb8d7f30fac2a6d2e9a32a47296e30) . It might be helpful.
+The service is managed via UCI (`/etc/config/mihomo`) with the mihomo config at `/etc/mihomo/config.yaml`; an example config is installed to `/etc/mihomo/example.yaml`.
 
-## Download
+For background on how the packaging works, see [this gist](https://gist.github.com/douglarek/99fb8d7f30fac2a6d2e9a32a47296e30).
 
-You can download the latest release [here](https://github.com/sers88/mihomo-openwrt/releases). Don't worry about the release time, it will always be the latest.
+## Releases & CI
 
-#### Install
+[![CI](https://github.com/sers88/mihomo-openwrt/actions/workflows/build.yml/badge.svg)](https://github.com/sers88/mihomo-openwrt/actions/workflows/build.yml)
 
-> [!IMPORTANT]
-> Starting from November 2024, OpenWrt will use the apk package manager by default. Sorry, this project will only support building APK packages and no longer support IPK.
+The [build workflow](.github/workflows/build.yml) runs on a 6-hour schedule, on PRs to `main`, and on manual dispatch:
 
-```
-$ apk add mihomo-1.18.10-r1_aarch64_generic.apk --allow-untrusted
-(1/4) Installing kmod-inet-diag (6.6.60-r1)
-Executing kmod-inet-diag-6.6.60-r1.post-install
-(2/4) Installing kmod-netlink-diag (6.6.60-r1)
-Executing kmod-netlink-diag-6.6.60-r1.post-install
-(3/4) Installing kmod-tun (6.6.60-r1)
-Executing kmod-tun-6.6.60-r1.post-install
-(4/4) Installing mihomo (1.18.10-r1)
-Executing mihomo-1.18.10-r1.post-install
-OK: 222 MiB in 241 packages
-```
+* Resolves the **latest** mihomo and metacubexd releases from upstream and builds against those versions
+* Verifies the metacubexd tarball against the sha256 digest published upstream (no unpinned downloads)
+* Skips work if the current release already contains both APKs for the matrix arch
+* Publishes both APKs per arch to a release tagged after the mihomo version; the 2 latest releases are kept, older ones are deleted
 
-The APK package manager will automatically install the corresponding kernel module dependencies.
+> [!NOTE]
+> On forks, GitHub disables scheduled workflows by default — enable them from the *Actions* tab after forking.
 
-## Web Dashboard (metacubexd)
+## Local build
 
-[metacubexd](https://github.com/MetaCubeX/metacubexd) is a web UI for managing mihomo. It is shipped as a separate package that installs the dashboard files into `/usr/share/mihomo/ui`:
+To build outside CI, use the official OpenWrt 25.12.2 SDK for your target (`rockchip/armv8` for `aarch64_generic`, `x86/64` for `x86_64`):
 
-```
-$ apk add mihomo-metacubexd-1.273.0-r1_aarch64_generic.apk --allow-untrusted
-```
-
-Enable the external controller in `/etc/mihomo/config.yaml`:
-
-```yaml
-external-controller: 0.0.0.0:9090
-secret: "change-me"
-external-ui: ui
+```sh
+# inside an extracted SDK
+cp -a net package/
+# substitute real versions before building
+sed -i 's/PKG_VERSION:=stable/PKG_VERSION:=<mihomo version>/' package/net/mihomo/Makefile
+sed -i -e 's/PKG_VERSION:=stable/PKG_VERSION:=<metacubexd version>/' \
+       -e 's/PKG_HASH:=skip/PKG_HASH:=<sha256 of compressed-dist.tgz>/' package/net/mihomo-metacubexd/Makefile
+make package/net/mihomo/{download,compile} V=s
+make package/net/mihomo-metacubexd/{download,compile} V=s
 ```
 
-Restart mihomo and open `http://<router-ip>:9090/ui` in your browser. Log in with the `secret` from the config above.
+## Credits
+
+* [douglarek/mihomo-openwrt](https://github.com/douglarek/mihomo-openwrt) — the original packaging this repo builds upon
+* [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) — the proxy core
+* [MetaCubeX/metacubexd](https://github.com/MetaCubeX/metacubexd) — the web dashboard
