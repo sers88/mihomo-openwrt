@@ -28,9 +28,21 @@ Quick install (downloads the latest release, installs both packages, creates a s
 curl -sL https://raw.githubusercontent.com/sers88/mihomo-openwrt/main/install.sh | sh
 ```
 
-Options: `--dnsmasq` additionally forwards the router's DNS through mihomo, `--no-service` installs packages only. Re-running the script updates to the latest release; existing configs are never touched. Prefer reviewing before piping? [Read the script](install.sh) and run it from a checkout.
+Options: `--dnsmasq` additionally forwards the router's DNS through mihomo, `--no-service` installs packages only, `--feed` installs via the signed APK repository below. Re-running the script updates to the latest release; existing configs are never touched. Prefer reviewing before piping? [Read the script](install.sh) and run it from a checkout.
 
-Manual installation:
+### APK repository (signed feed)
+
+Alternatively, add the project's [GitHub Pages](https://sers88.github.io/mihomo-openwrt) feed once and use `apk` natively — no `--allow-untrusted`, and `apk upgrade` keeps both packages current:
+
+```sh
+wget -O /etc/apk/keys/mihomo-openwrt.pem https://sers88.github.io/mihomo-openwrt/keys/mihomo-openwrt.pem
+echo "https://sers88.github.io/mihomo-openwrt/packages/$(. /etc/openwrt_release && echo $DISTRIB_ARCH)/packages.adb" > /etc/apk/repositories.d/mihomo-openwrt.list
+apk update && apk add mihomo mihomo-metacubexd
+```
+
+The feed index is signed with the key committed at [`keys/mihomo-openwrt.pem`](keys/mihomo-openwrt.pem) and is rebuilt together with each release. `sh install.sh --feed` performs the same setup automatically.
+
+### Manual installation
 
 Grab the latest APKs from the [releases page](https://github.com/sers88/mihomo-openwrt/releases). Release names track the mihomo version (e.g. `v1.19.30`); don't worry about the release date — it always contains the latest upstream versions.
 
@@ -87,9 +99,10 @@ The [build workflow](.github/workflows/build.yml) runs on a 6-hour schedule, on 
 * Verifies the metacubexd tarball against the sha256 digest published upstream (no unpinned downloads)
 * Skips work if the current release already contains both APKs for the matrix arch
 * Publishes both APKs per arch to a release tagged after the mihomo version; the 2 latest releases are kept, older ones are deleted
+* Publishes a signed APK feed (index + packages) to GitHub Pages and verifies it by installing both packages inside an OpenWrt 25.12.2 container
 
 > [!NOTE]
-> On forks, GitHub disables scheduled workflows by default — enable them from the *Actions* tab after forking.
+> On forks, GitHub disables scheduled workflows by default — enable them from the *Actions* tab after forking. Pages must be enabled (Source: GitHub Actions) for the feed.
 
 ## Local build
 
