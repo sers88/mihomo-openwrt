@@ -24,7 +24,11 @@ jobs:
 
       - name: Get latest mihomo version
         run: |
-          TAG=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/tags" | jq -r '.[0].name' | tr -d 'v')
+          TAG=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | jq -r '.tag_name' | tr -d 'v')
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "Failed to resolve latest mihomo release" >&2
+            exit 1
+          fi
           echo "TAG=$TAG" >> $GITHUB_ENV
 
       - name: Get latest metacubexd version and hash
