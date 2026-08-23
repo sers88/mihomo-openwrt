@@ -36,8 +36,8 @@ define Package/mihomo-metacubexd/description
 endef
 
 define Build/Prepare
-	mkdir -p $(PKG_BUILD_DIR)
-	$(TAR) -C $(PKG_BUILD_DIR) -xzf $(DL_DIR)/$(PKG_SOURCE)
+	mkdir -p $(PKG_BUILD_DIR)/dist
+	$(TAR) -C $(PKG_BUILD_DIR)/dist -xzf $(DL_DIR)/$(PKG_SOURCE)
 endef
 
 define Build/Compile
@@ -45,7 +45,7 @@ endef
 
 define Package/mihomo-metacubexd/install
 	$(INSTALL_DIR) $(1)/usr/share/mihomo/ui
-	$(CP) $(PKG_BUILD_DIR)/. $(1)/usr/share/mihomo/ui/
+	$(CP) $(PKG_BUILD_DIR)/dist/. $(1)/usr/share/mihomo/ui/
 endef
 
 $(eval $(call BuildPackage,mihomo-metacubexd))
