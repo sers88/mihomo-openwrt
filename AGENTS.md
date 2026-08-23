@@ -11,6 +11,8 @@ This repo builds two OpenWrt APK packages from upstream sources:
 
 `.github/workflows/build.yml` is the single CI pipeline: matrix build for `aarch64_generic` and `x86_64`, triggered by schedule (every 6h), PRs to `main`, and manual dispatch. It resolves the latest upstream releases, substitutes versions/hashes into the Makefiles, builds both APKs, publishes them to a GitHub release, and prunes old releases down to 2.
 
+`install.sh` at the repo root is the on-device installer/updater: it detects the arch, downloads the latest release, installs both APKs, seeds a starter config if missing, and enables the service. Re-running it updates to the latest release.
+
 ## Critical invariants — do not break these
 
 1. **Placeholders, not hardcoded versions.** Both Makefiles carry `PKG_VERSION:=stable` and `PKG_HASH:=skip` as placeholders. The CI pipeline `sed`-substitutes them at build time. Never hardcode a version or hash in committed files — the sed patterns in `build.yml` match the literal strings `PKG_VERSION:=stable` and `PKG_HASH:=skip`.
@@ -26,6 +28,8 @@ This repo builds two OpenWrt APK packages from upstream sources:
 6. **Version resolution.** Upstream versions come from `/releases/latest` (GitHub API), not git tags. mihomo's latest *tag* and latest *release* can diverge; keep the releases-based logic and the null-guard.
 
 7. **Release layout contract.** Assets are renamed to include the matrix arch suffix: `mihomo-<ver>-r1_<arch>.apk`, `mihomo-metacubexd-<ver>-r1_<arch>.apk`. The skip-check in CI greps for exactly these two patterns per arch. `test.sh` in each package dir asserts the on-target file layout (e.g. `/usr/share/mihomo/ui/index.html`) — update it when changing installed paths.
+
+8. **install.sh mirrors the release layout.** The installer at the repo root resolves the latest release via the GitHub API and matches asset URLs with `/mihomo-[0-9]*-<arch>.apk` (leading digit distinguishes the core from `mihomo-metacubexd-*`) and only accepts URLs containing `/releases/download/` so release-body text cannot leak into the extraction. If asset naming changes, update install.sh together with the CI skip-check. The script runs on-device under BusyBox ash — keep it POSIX sh (no bashisms, no jq), and keep the starter config it embeds in sync with `docs/INSTALL.md`.
 
 ## Verification
 
