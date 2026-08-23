@@ -4,6 +4,21 @@ Complete walk-through from a fresh OpenWrt 25.12+ router to a running mihomo wit
 
 The short version: install two APKs, create `/etc/mihomo/config.yaml`, enable the service, open the dashboard.
 
+## Quick install (script)
+
+A one-liner does everything below automatically — detects the architecture, downloads the latest release, installs both packages, creates a starter config with a random secret, enables and starts the service:
+
+```sh
+curl -sL https://raw.githubusercontent.com/sers88/mihomo-openwrt/main/install.sh | sh
+```
+
+| Option | Effect |
+|---|---|
+| `--dnsmasq` | also forward the router's DNS through mihomo (step 5 below) |
+| `--no-service` | install/update packages only, no config, no service changes |
+
+The script is idempotent: re-running it updates to the latest release. Existing configs are never modified. If you prefer not to pipe scripts from the internet, [read it first](https://github.com/sers88/mihomo-openwrt/blob/main/install.sh) and follow the manual steps below instead.
+
 ## 0. Determine your architecture
 
 SSH into the router and run:
