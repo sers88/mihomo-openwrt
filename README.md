@@ -22,6 +22,16 @@ Builds are published for two architectures:
 
 ## Download & Install
 
+Quick install (downloads the latest release, installs both packages, creates a starter config with a random secret, enables and starts the service):
+
+```sh
+curl -sL https://raw.githubusercontent.com/sers88/mihomo-openwrt/main/install.sh | sh
+```
+
+Options: `--dnsmasq` additionally forwards the router's DNS through mihomo, `--no-service` installs packages only. Re-running the script updates to the latest release; existing configs are never touched. Prefer reviewing before piping? [Read the script](install.sh) and run it from a checkout.
+
+Manual installation:
+
 Grab the latest APKs from the [releases page](https://github.com/sers88/mihomo-openwrt/releases). Release names track the mihomo version (e.g. `v1.19.30`); don't worry about the release date — it always contains the latest upstream versions.
 
 Upload the APKs to your router and install:
