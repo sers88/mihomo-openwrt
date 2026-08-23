@@ -31,6 +31,8 @@ apk add mihomo-<version>-r1_<arch>.apk --allow-untrusted
 apk add mihomo-metacubexd-<version>-r1_<arch>.apk --allow-untrusted
 ```
 
+For a complete walk-through (architecture detection, config skeleton, enabling the service, DNS setup, troubleshooting), see the [installation guide](docs/INSTALL.md) ([русская версия](docs/INSTALL.ru.md)).
+
 > [!TIP]
 > Replace `<version>` and `<arch>` with the actual file names you downloaded (e.g. `mihomo-1.19.30-r1_aarch64_generic.apk`). The `mihomo` package pulls in the required kernel modules (`kmod-tun`, `kmod-inet-diag`, `kmod-netlink-diag`) automatically; the metacubexd package depends on `mihomo` and is arch-independent — either arch file works on any router.
 
