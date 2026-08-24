@@ -10,7 +10,7 @@ This repo builds three OpenWrt APK packages from upstream sources:
 * `net/mihomo-metacubexd` — the metacubexd web dashboard (prebuilt static files), installed to `/usr/share/mihomo/ui`, `PKGARCH:=all`, `DEPENDS:=+mihomo`
 * `net/luci-app-mihomo` — a minimal LuCI app (client-side JS view + menu/acl JSON, no rpcd backend of its own), `PKGARCH:=all`, `DEPENDS:=+luci-base +mihomo`; plain package Makefile, deliberately not using luci.mk since this is not the luci feed
 
-`.github/workflows/build.yml` is the single CI pipeline: matrix build for `aarch64_generic` and `x86_64`, triggered by schedule (every 6h), PRs to `main`, and manual dispatch. It resolves the latest upstream releases, substitutes versions/hashes into the Makefiles, builds all three APKs, publishes them to a GitHub release, prunes old releases down to 2, and publishes a signed APK feed to GitHub Pages (`feed` job) that is verified end-to-end in an OpenWrt container (`feed-test` job).
+`.github/workflows/build.yml` is the single CI pipeline: matrix build for `aarch64_generic` and `x86_64`, triggered by schedule (every 12h), PRs to `main`, and manual dispatch. It resolves the latest upstream releases, substitutes versions/hashes into the Makefiles, builds all three APKs, publishes them to a GitHub release, prunes old releases down to 2, and publishes a signed APK feed to GitHub Pages (`feed` job) that is verified end-to-end in an OpenWrt container (`feed-test` job).
 
 `install.sh` at the repo root is the on-device installer/updater: it detects the arch, downloads the latest release, installs both APKs, seeds a starter config if missing, and enables the service. Re-running it updates to the latest release.
 
