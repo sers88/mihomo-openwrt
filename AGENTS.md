@@ -12,7 +12,7 @@ This repo builds three OpenWrt APK packages from upstream sources:
 
 `.github/workflows/build.yml` is the single CI pipeline: matrix build for `aarch64_generic` and `x86_64`, triggered by schedule (every 12h), PRs to `main`, and manual dispatch. It resolves the latest upstream releases, substitutes versions/hashes into the Makefiles, builds all three APKs, publishes them to a GitHub release, prunes old releases down to 2, and publishes a signed APK feed to GitHub Pages (`feed` job) that is verified end-to-end in an OpenWrt container (`feed-test` job).
 
-`install.sh` at the repo root is the on-device installer/updater: it detects the arch, downloads the latest release, installs both APKs, seeds a starter config if missing, and enables the service. Re-running it updates to the latest release.
+`install.sh` at the repo root is the on-device installer/updater: it detects the arch, downloads the latest release, installs the mihomo and metacubexd APKs, seeds a starter config if missing, and enables the service. Re-running it updates to the latest release.
 
 ## Critical invariants — do not break these
 
@@ -24,11 +24,11 @@ This repo builds three OpenWrt APK packages from upstream sources:
 
 4. **SDK target mapping.** In `build.yml`, `aarch64_generic` builds against the `rockchip/armv8` SDK, `x86_64` against `x86/64`. Both use OpenWrt 25.12.2.
 
-5. **Conditional CI steps.** Steps after `Check if build already exists` are gated on `env.SKIP_BUILD != 'true'`. When adding build steps, preserve this condition or they will fail on skip runs.
+5. **Conditional CI steps + per-package skip.** Steps after `Check which packages already exist in the release` are gated on `env.SKIP_BUILD != 'true'` (all three packages present); individual compile blocks are gated on `SKIP_MIHOMO` / `SKIP_XD` / `SKIP_LUCI` so a partial run rebuilds only what is missing (e.g. a metacubexd-only update skips the ~15 min mihomo build). The flags match release assets **by exact filename** including `-r1` — if `PKG_RELEASE` ever changes from 1, update the skip-check and the feed completeness check together. When adding build steps, preserve the `SKIP_BUILD` condition or they will fail on skip runs.
 
 6. **Version resolution.** Upstream versions come from `/releases/latest` (GitHub API), not git tags. mihomo's latest *tag* and latest *release* can diverge; keep the releases-based logic and the null-guard.
 
-7. **Release layout contract.** Assets are renamed to include the matrix arch suffix: `mihomo-<ver>-r1_<arch>.apk`, `mihomo-metacubexd-<ver>-r1_<arch>.apk`, `luci-app-mihomo-<ver>-r1_<arch>.apk` (the LuCI app is versioned after the mihomo TAG). The skip-check in CI greps for exactly these three patterns per arch; the release upload uses the single glob `sdk/bin/packages/*/*/*.apk` (only our own packages land there), while upload-artifact lists explicit globs — `mihomo*` does NOT match `luci-app-mihomo-*` (it matches by prefix). `test.sh` in each package dir asserts the on-target file layout (e.g. `/usr/share/mihomo/ui/index.html`) — update it when changing installed paths.
+7. **Release layout contract.** Assets are renamed to include the matrix arch suffix: `mihomo-<ver>-r1_<arch>.apk`, `mihomo-metacubexd-<ver>-r1_<arch>.apk`, `luci-app-mihomo-<ver>-r1_<arch>.apk` (the LuCI app is versioned after the mihomo TAG). The release upload uses the single glob `sdk/bin/packages/*/*/*.apk` (only our own packages land there), while upload-artifact lists explicit globs — `mihomo*` does NOT match `luci-app-mihomo-*` (it matches by prefix). After upload, each matrix job deletes stale same-package assets **for its own arch only** (scoped by the `_arch.apk` suffix so concurrent jobs never race). The feed job downloads only the exact current-version assets, overlays fresh artifacts on top, and asserts all three packages at exact current versions per arch are present (fail-closed completeness check). `test.sh` in each package dir asserts the on-target file layout (e.g. `/usr/share/mihomo/ui/index.html`) — update it when changing installed paths.
 
 8. **install.sh mirrors the release layout.** The installer at the repo root resolves the latest release via the GitHub API and matches asset URLs with `/mihomo-[0-9]*-<arch>.apk` (leading digit distinguishes the core from `mihomo-metacubexd-*`) and only accepts URLs containing `/releases/download/` so release-body text cannot leak into the extraction. If asset naming changes, update install.sh together with the CI skip-check. The script runs on-device under BusyBox ash — keep it POSIX sh (no bashisms, no jq), and keep the starter config it embeds in sync with `docs/INSTALL.md`.
 
@@ -38,7 +38,7 @@ This repo builds three OpenWrt APK packages from upstream sources:
 
 * No local build is possible on Windows (OpenWrt SDK is Linux-only) — rely on CI for build validation.
 * Before pushing Makefile changes: confirm recipe lines start with tabs.
-* CI on PRs to `main` runs the full pipeline; a fast green run usually means the skip-path fired (both APKs already in the release). To force a real build, delete the current release and dispatch the workflow.
+* CI on PRs to `main` runs the full pipeline; a fast green run usually means the skip-path fired (all APKs already in the release). To force a real build, delete the current release and dispatch the workflow.
 * Check PR status with `gh pr checks`; failed-step logs with `gh run view <id> --log-failed`.
 
 ## Environment notes

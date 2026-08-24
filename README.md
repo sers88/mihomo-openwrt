@@ -100,13 +100,13 @@ For background on how the packaging works, see [this gist](https://gist.github.c
 
 [![CI](https://github.com/sers88/mihomo-openwrt/actions/workflows/build.yml/badge.svg)](https://github.com/sers88/mihomo-openwrt/actions/workflows/build.yml)
 
-The [build workflow](.github/workflows/build.yml) runs on a 6-hour schedule, on PRs to `main`, and on manual dispatch:
+The [build workflow](.github/workflows/build.yml) runs on a 12-hour schedule, on PRs to `main`, and on manual dispatch:
 
 * Resolves the **latest** mihomo and metacubexd releases from upstream and builds against those versions
 * Verifies the metacubexd tarball against the sha256 digest published upstream (no unpinned downloads)
-* Skips work if the current release already contains both APKs for the matrix arch
-* Publishes both APKs per arch to a release tagged after the mihomo version; the 2 latest releases are kept, older ones are deleted
-* Publishes a signed APK feed (index + packages) to GitHub Pages and verifies it by installing both packages inside an OpenWrt 25.12.2 container
+* Rebuilds only the packages that changed: each APK is compiled only if the release does not already contain its exact current version (a metacubexd-only update skips the ~15 min mihomo build, and a partially failed run self-heals on the next one)
+* Publishes the APKs per arch to a release tagged after the mihomo version; the 2 latest releases are kept, older ones are deleted
+* Publishes a signed APK feed (index + packages) to GitHub Pages and verifies it by installing all three packages inside an OpenWrt 25.12.2 container
 
 > [!NOTE]
 > On forks, GitHub disables scheduled workflows by default — enable them from the *Actions* tab after forking. Pages must be enabled (Source: GitHub Actions) for the feed.
