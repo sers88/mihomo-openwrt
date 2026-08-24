@@ -47,18 +47,25 @@ jobs:
           echo "XD_TAG=$XD_TAG" >> $GITHUB_ENV
           echo "XD_HASH=$XD_HASH" >> $GITHUB_ENV
 
-      - name: Check if build already exists for this arch
+      - name: Check which packages already exist in the release
         id: check_existing
         run: |
           ASSETS="$(gh release view "v${{ env.TAG }}" --json assets --jq '.assets[].name' 2>/dev/null || true)"
-          if echo "$ASSETS" | grep -q "^mihomo-[0-9.]*-r[0-9]*_${{ matrix.arch }}.apk$" \
-             && echo "$ASSETS" | grep -q "^mihomo-metacubexd-[0-9.]*-r[0-9]*_${{ matrix.arch }}.apk$" \
-             && echo "$ASSETS" | grep -q "^luci-app-mihomo-[0-9.]*-r[0-9]*_${{ matrix.arch }}.apk$"; then
-            echo "SKIP_BUILD=true" >> $GITHUB_ENV
-            echo "Skipping build - release v${{ env.TAG }} already contains all three APKs for ${{ matrix.arch }}"
-          else
-            echo "SKIP_BUILD=false" >> $GITHUB_ENV
+          has() { printf '%s\n' "$ASSETS" | grep -qxF "$1"; }
+          if has "mihomo-${{ env.TAG }}-r1_${{ matrix.arch }}.apk"; then SKIP_MIHOMO=true; else SKIP_MIHOMO=false; fi
+          if has "mihomo-metacubexd-${{ env.XD_TAG }}-r1_${{ matrix.arch }}.apk"; then SKIP_XD=true; else SKIP_XD=false; fi
+          if has "luci-app-mihomo-${{ env.TAG }}-r1_${{ matrix.arch }}.apk"; then SKIP_LUCI=true; else SKIP_LUCI=false; fi
+          SKIP_BUILD=false
+          if [ "$SKIP_MIHOMO" = true ] && [ "$SKIP_XD" = true ] && [ "$SKIP_LUCI" = true ]; then
+            SKIP_BUILD=true
           fi
+          {
+            echo "SKIP_MIHOMO=$SKIP_MIHOMO"
+            echo "SKIP_XD=$SKIP_XD"
+            echo "SKIP_LUCI=$SKIP_LUCI"
+            echo "SKIP_BUILD=$SKIP_BUILD"
+          } >> $GITHUB_ENV
+          echo "mihomo=$SKIP_MIHOMO metacubexd=$SKIP_XD luci=$SKIP_LUCI skip_all=$SKIP_BUILD"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -122,11 +129,17 @@ jobs:
           cat package/net/mihomo-metacubexd/Makefile
           sed -i 's/PKG_VERSION:=stable/PKG_VERSION:=${{ env.TAG }}/g' package/net/luci-app-mihomo/Makefile
           cat package/net/luci-app-mihomo/Makefile
-          make package/net/mihomo/{download,check} FIXUP=1 V=s
-          make package/net/mihomo-metacubexd/{download,check} FIXUP=1 V=s
-          make package/net/mihomo/compile V=s
-          make package/net/mihomo-metacubexd/compile V=s
-          make package/net/luci-app-mihomo/compile V=s
+          if [ "$SKIP_MIHOMO" != "true" ]; then
+            make package/net/mihomo/{download,check} FIXUP=1 V=s
+            make package/net/mihomo/compile V=s
+          fi
+          if [ "$SKIP_XD" != "true" ]; then
+            make package/net/mihomo-metacubexd/{download,check} FIXUP=1 V=s
+            make package/net/mihomo-metacubexd/compile V=s
+          fi
+          if [ "$SKIP_LUCI" != "true" ]; then
+            make package/net/luci-app-mihomo/compile V=s
+          fi
 
           find bin/packages -name '*.apk' -exec sh -c 'mv "$1" "${1%.apk}_${{ matrix.arch }}.apk"' _ {} \;
           echo "PKG_NAME=mihomo-openwrt-${{ env.TAG }}-${{ matrix.arch }}" >> $GITHUB_ENV
@@ -165,6 +178,25 @@ jobs:
           body: |
             ${{ steps.read_release.outputs.RELEASE_BODY }}
 
+      - name: Remove stale same-package assets for this arch
+        if: env.SKIP_BUILD != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          KEEP="mihomo-${{ env.TAG }}-r1_${{ matrix.arch }}.apk mihomo-metacubexd-${{ env.XD_TAG }}-r1_${{ matrix.arch }}.apk luci-app-mihomo-${{ env.TAG }}-r1_${{ matrix.arch }}.apk"
+          gh release view "v${{ env.TAG }}" --json assets --jq '.assets[].name' | while read -r a; do
+            case "$a" in
+              *_${{ matrix.arch }}.apk)
+                keep=0
+                for k in $KEEP; do [ "$a" = "$k" ] && keep=1; done
+                if [ "$keep" != "1" ]; then
+                  echo "Deleting stale asset: $a"
+                  gh release delete-asset "v${{ env.TAG }}" "$a" -y
+                fi
+                ;;
+            esac
+          done
+
   feed:
     name: Publish APK feed to Pages
     needs: build
@@ -188,6 +220,15 @@ jobs:
           fi
           echo "TAG=$TAG" >> $GITHUB_ENV
 
+      - name: Resolve latest metacubexd version
+        run: |
+          XD_TAG=$(curl -s "https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest" | jq -r '.tag_name' | tr -d 'v')
+          if [ -z "$XD_TAG" ] || [ "$XD_TAG" = "null" ]; then
+            echo "Failed to resolve latest metacubexd release" >&2
+            exit 1
+          fi
+          echo "XD_TAG=$XD_TAG" >> $GITHUB_ENV
+
       - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
@@ -203,21 +244,30 @@ jobs:
           cp keys/mihomo-openwrt.pem site/keys/
 
           for arch in aarch64_generic x86_64; do
-            found=0
-            for f in $(find artifacts -type f -name "*_${arch}.apk" 2>/dev/null); do
-              found=1
+            # Base: current-version assets from the release (may be partial or absent on first build)
+            mkdir -p "tmp-rel-${arch}"
+            gh release download "v${TAG}" \
+              --pattern "mihomo-${TAG}-r1_${arch}.apk" \
+              --pattern "mihomo-metacubexd-${XD_TAG}-r1_${arch}.apk" \
+              --pattern "luci-app-mihomo-${TAG}-r1_${arch}.apk" \
+              --dir "tmp-rel-${arch}" || true
+            for f in "tmp-rel-${arch}"/*.apk; do
+              [ -e "$f" ] || continue
               base=$(basename "$f" "_${arch}.apk")
               cp "$f" "site/packages/$arch/${base}.apk"
             done
-            if [ "$found" -eq 0 ]; then
-              echo "No build artifact for $arch, falling back to release v${TAG}"
-              mkdir -p "tmp-rel-${arch}"
-              gh release download "v${TAG}" --pattern "*_${arch}.apk" --dir "tmp-rel-${arch}"
-              for f in "tmp-rel-${arch}"/*.apk; do
-                base=$(basename "$f" "_${arch}.apk")
-                cp "$f" "site/packages/$arch/${base}.apk"
-              done
-            fi
+            # Overlay: freshly built artifacts from this run
+            for f in $(find artifacts -type f -name "*_${arch}.apk" 2>/dev/null); do
+              base=$(basename "$f" "_${arch}.apk")
+              cp "$f" "site/packages/$arch/${base}.apk"
+            done
+            # Completeness: exact current versions of all three packages must be present
+            for pkg in "mihomo-${TAG}-r1.apk" "mihomo-metacubexd-${XD_TAG}-r1.apk" "luci-app-mihomo-${TAG}-r1.apk"; do
+              if [ ! -f "site/packages/$arch/$pkg" ]; then
+                echo "Feed incomplete for $arch: missing $pkg" >&2
+                exit 1
+              fi
+            done
             ls -la "site/packages/$arch"
           done
 
