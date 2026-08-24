@@ -8,6 +8,7 @@ Native [mihomo](https://github.com/MetaCubeX/mihomo) (formerly Clash Meta) build
 |---|---|---|
 | `mihomo` | The proxy core (Go binary, TUN support) | ~17 MB |
 | `mihomo-metacubexd` | Web dashboard, installed to `/usr/share/mihomo/ui`, arch-independent (`all`) | ~2.5 MB |
+| `luci-app-mihomo` | Optional LuCI page: service status and control, dashboard link, log viewer | ~10 KB |
 
 Builds are published for two architectures:
 
@@ -41,6 +42,12 @@ apk update && apk add mihomo mihomo-metacubexd
 ```
 
 The feed index is signed with the key committed at [`keys/mihomo-openwrt.pem`](keys/mihomo-openwrt.pem) and is rebuilt together with each release. `sh install.sh --feed` performs the same setup automatically.
+
+With the feed registered you can also install the LuCI integration — a *Services → Mihomo* page with service status, start/stop/restart and autostart buttons, a link to the metacubexd dashboard, and a log viewer:
+
+```sh
+apk add luci-app-mihomo
+```
 
 ### Manual installation
 
