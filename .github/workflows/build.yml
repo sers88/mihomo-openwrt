@@ -273,7 +273,18 @@ jobs:
 
       - name: Install apk-tools
         run: |
-          curl -fsSL -o apk.static https://gitlab.alpinelinux.org/api/v4/projects/5/packages/generic/v3.0.7/x86_64/apk.static
+          for i in 1 2 3; do
+            if curl -fsSL --connect-timeout 15 --retry 3 --retry-delay 10 --retry-all-errors \
+              -o apk.static https://gitlab.alpinelinux.org/api/v4/projects/5/packages/generic/v3.0.7/x86_64/apk.static; then
+              break
+            fi
+            if [ "$i" -eq 3 ]; then
+              echo "Failed to download apk.static after $i attempts" >&2
+              exit 1
+            fi
+            echo "Download attempt $i failed, retrying in 30s..." >&2
+            sleep 30
+          done
           echo "c07bf5356eacc9dd7a8c56bc537f46702f007170287403299d52a04264e74b3c  apk.static" | sha256sum -c -
           chmod +x apk.static
 
