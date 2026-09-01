@@ -273,19 +273,26 @@ jobs:
 
       - name: Install apk-tools
         run: |
-          for i in 1 2 3; do
-            if curl -fsSL --connect-timeout 15 --retry 3 --retry-delay 10 --retry-all-errors \
-              -o apk.static https://gitlab.alpinelinux.org/api/v4/projects/5/packages/generic/v3.0.7/x86_64/apk.static; then
-              break
-            fi
-            if [ "$i" -eq 3 ]; then
-              echo "Failed to download apk.static after $i attempts" >&2
-              exit 1
-            fi
-            echo "Download attempt $i failed, retrying in 30s..." >&2
-            sleep 30
-          done
-          echo "c07bf5356eacc9dd7a8c56bc537f46702f007170287403299d52a04264e74b3c  apk.static" | sha256sum -c -
+          set -eu
+          dl() {
+            for i in 1 2 3; do
+              if curl -fsSL --connect-timeout 15 --retry 3 --retry-delay 10 --retry-all-errors -o "$2" "$1"; then
+                return 0
+              fi
+              echo "Download attempt $i failed: $1" >&2
+              [ "$i" -eq 3 ] && return 1
+              sleep 30
+            done
+          }
+          if dl https://gitlab.alpinelinux.org/api/v4/projects/5/packages/generic/v3.0.7/x86_64/apk.static apk.static; then
+            echo "c07bf5356eacc9dd7a8c56bc537f46702f007170287403299d52a04264e74b3c  apk.static" | sha256sum -c -
+          else
+            echo "GitLab unreachable, falling back to Alpine CDN" >&2
+            dl https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/apk-tools-static-3.0.8-r0.apk apk-tools-static.apk
+            tar -xzf apk-tools-static.apk sbin/apk.static
+            mv sbin/apk.static apk.static
+            echo "5118a57ae7c07e13268a754f78aa9c7d39a0bed708bb11c101d78e2a884cee5d  apk.static" | sha256sum -c -
+          fi
           chmod +x apk.static
 
       - name: Verify signing key against committed public key
