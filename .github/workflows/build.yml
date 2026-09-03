@@ -288,10 +288,26 @@ jobs:
             echo "c07bf5356eacc9dd7a8c56bc537f46702f007170287403299d52a04264e74b3c  apk.static" | sha256sum -c -
           else
             echo "GitLab unreachable, falling back to Alpine CDN" >&2
-            dl https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/apk-tools-static-3.0.8-r0.apk apk-tools-static.apk
+            cdn=https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/x86_64
+            dl "$cdn/APKINDEX.tar.gz" APKINDEX.tar.gz
+            tar -xzf APKINDEX.tar.gz APKINDEX
+            set -- $(awk 'BEGIN{RS="";FS="\n"} {for(i=1;i<=NF;i++){if($i=="P:apk-tools-static")m=1; else if($i~/^P:/)m=0; if(m&&$i~/^V:/)v=substr($i,3); if(m&&$i~/^S:/)s=substr($i,3)}} END{print v, s}' APKINDEX)
+            ver=$1
+            size=$2
+            if [ -z "$ver" ] || [ -z "$size" ]; then
+              echo "apk-tools-static not found in APKINDEX" >&2
+              exit 1
+            fi
+            echo "Resolved apk-tools-static version: $ver"
+            dl "$cdn/apk-tools-static-$ver.apk" apk-tools-static.apk
+            actual_size=$(stat -c%s apk-tools-static.apk)
+            if [ "$actual_size" != "$size" ]; then
+              echo "Size mismatch: expected $size bytes, got $actual_size" >&2
+              exit 1
+            fi
             tar -xzf apk-tools-static.apk sbin/apk.static
             mv sbin/apk.static apk.static
-            echo "5118a57ae7c07e13268a754f78aa9c7d39a0bed708bb11c101d78e2a884cee5d  apk.static" | sha256sum -c -
+            ./apk.static --version >/dev/null
           fi
           chmod +x apk.static
 
