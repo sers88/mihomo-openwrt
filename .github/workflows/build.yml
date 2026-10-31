@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=$(gh api --retry 3 repos/MetaCubeX/mihomo/releases/latest --jq '.tag_name' | tr -d 'v')
+          TAG=$(gh api repos/MetaCubeX/mihomo/releases/latest --jq '.tag_name' | tr -d 'v')
           if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
             echo "Failed to resolve latest mihomo release" >&2
             exit 1
@@ -41,7 +41,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RESP=$(gh api --retry 3 repos/MetaCubeX/metacubexd/releases/latest)
+          RESP=$(gh api repos/MetaCubeX/metacubexd/releases/latest)
           XD_TAG=$(echo "$RESP" | jq -r '.tag_name' | tr -d 'v')
           XD_HASH=$(echo "$RESP" | jq -r '.assets[] | select(.name == "compressed-dist.tgz") | .digest' | sed 's/^sha256://')
           if [ -z "$XD_TAG" ] || [ "$XD_TAG" = "null" ] || [ -z "$XD_HASH" ] || [ "$XD_HASH" = "null" ]; then
@@ -219,7 +219,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=$(gh api --retry 3 repos/MetaCubeX/mihomo/releases/latest --jq '.tag_name' | tr -d 'v')
+          TAG=$(gh api repos/MetaCubeX/mihomo/releases/latest --jq '.tag_name' | tr -d 'v')
           if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
             echo "Failed to resolve latest mihomo release" >&2
             exit 1
@@ -230,7 +230,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          XD_TAG=$(gh api --retry 3 repos/MetaCubeX/metacubexd/releases/latest --jq '.tag_name' | tr -d 'v')
+          XD_TAG=$(gh api repos/MetaCubeX/metacubexd/releases/latest --jq '.tag_name' | tr -d 'v')
           if [ -z "$XD_TAG" ] || [ "$XD_TAG" = "null" ]; then
             echo "Failed to resolve latest metacubexd release" >&2
             exit 1
