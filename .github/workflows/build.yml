@@ -345,6 +345,27 @@ jobs:
         with:
           path: site
 
+      # deploy-pages can query the artifacts API before the freshly uploaded
+      # artifact shows up in the listing (eventual consistency, see
+      # actions/deploy-pages#451) and then fails with "No artifacts named
+      # github-pages were found". Poll until it is visible.
+      - name: Wait for Pages artifact visibility
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          for i in $(seq 1 24); do
+            count=$(gh api "/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts?name=github-pages" --jq '.total_count')
+            if [ "$count" -ge 1 ]; then
+              echo "github-pages artifact is visible (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: github-pages artifact not visible yet, retrying in 5s..." >&2
+            sleep 5
+          done
+          echo "github-pages artifact did not become visible within 2 minutes" >&2
+          exit 1
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
